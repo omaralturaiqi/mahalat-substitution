@@ -193,7 +193,8 @@ app.get('/api/export', checkPin, async (req, res) => {
     });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=توثيق_حصص_الاحتياط.xlsx');
+    const utf8Name = encodeURIComponent('توثيق_حصص_الاحتياط.xlsx');
+    res.setHeader('Content-Disposition', `attachment; filename="substitution-report.xlsx"; filename*=UTF-8''${utf8Name}`);
     await wb.xlsx.write(res);
     res.end();
   } catch (err) {
