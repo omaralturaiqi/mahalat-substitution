@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>توثيق حصة الاحتياط</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2A2E; --paper:#F7F5F0; --card:#FFFFFF;
+    --teal:#0E4F4F; --teal-deep:#0A3B3B; --line:#DDD8CC; --muted:#6B7674; --danger:#A13E3E;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper); font-family:'Tajawal',sans-serif; color:var(--ink);
+    min-height:100vh; padding:calc(env(safe-area-inset-top,0px) + 28px) 16px calc(env(safe-area-inset-bottom,0px) + 40px);
+  }
+  .wrap{max-width:520px;margin:0 auto;}
+  .eyebrow{color:var(--teal); font-weight:700; font-size:13px; margin-bottom:6px;}
+  h1{font-size:24px; font-weight:800; margin:0 0 6px; color:var(--teal-deep); line-height:1.35;}
+  .sub{color:var(--muted); font-size:14px; margin:0 0 24px; line-height:1.6;}
+  form{background:var(--card); border:1px solid var(--line); border-radius:4px; padding:26px 22px; position:relative;}
+  form::before{content:""; position:absolute; top:0; right:0; bottom:0; width:5px; background:var(--teal); border-radius:4px 0 0 4px;}
+  .row{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .field{margin-bottom:16px;}
+  label{display:block; font-size:14px; font-weight:700; margin-bottom:7px;}
+  label .req{color:var(--danger); margin-inline-start:2px;}
+  input, select, textarea{
+    width:100%; font-family:'Tajawal',sans-serif; font-size:14.5px; padding:10px 12px;
+    border:1px solid var(--line); border-radius:3px; background:#FDFCFA; color:var(--ink);
+  }
+  select{ appearance:none; -webkit-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9'><path d='M1 1l6 6 6-6' stroke='%230E4F4F' stroke-width='2' fill='none'/></svg>");
+    background-repeat:no-repeat; background-position:left 12px center; padding-left:32px;
+  }
+  input:focus, select:focus, textarea:focus{outline:none; border-color:var(--teal); box-shadow:0 0 0 3px rgba(14,79,79,.12);}
+  input[readonly]{background:#F1EFE9; color:var(--muted);}
+  textarea{resize:vertical; min-height:60px;}
+  .charcount{font-size:11.5px; color:var(--muted); text-align:left; margin-top:4px;}
+  .charcount.over{color:var(--danger); font-weight:700;}
+  button{width:100%; background:var(--teal); color:#fff; border:none; padding:14px; font-family:'Tajawal',sans-serif;
+    font-size:15px; font-weight:700; border-radius:3px; cursor:pointer; margin-top:6px;}
+  button:disabled{background:#B7C4C4;}
+  .msg{display:none; padding:11px 14px; border-radius:3px; font-size:13.5px; font-weight:700; margin-top:16px;}
+  .msg.ok{display:block; background:#EAF2EE; border:1px solid #BFDACB; color:#1F5C39;}
+  .msg.err{display:block; background:#FBEAEA; border:1px solid #E3B7B7; color:var(--danger);}
+  @media (max-width:480px){ .row{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">التوثيق الإلكتروني لحصة الاحتياط</div>
+  <h1>نموذج توثيق الحصة</h1>
+  <p class="sub">تُعبَّأ هذه الصفحة فور انتهاء حصة الاحتياط. تستغرق أقل من دقيقة.</p>
+
+  <form id="f">
+    <div class="row">
+      <div class="field">
+        <label for="fdate">التاريخ</label>
+        <input type="date" id="fdate" required>
+      </div>
+      <div class="field">
+        <label for="fday">اليوم</label>
+        <input type="text" id="fday" readonly placeholder="يُحسب تلقائيًا">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="fperiod">الحصة</label>
+        <select id="fperiod" required>
+          <option value="" disabled selected>اختاري رقم الحصة</option>
+          <option>1</option><option>2</option><option>3</option>
+          <option>4</option><option>5</option><option>6</option><option>7</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fteacher">اسم المعلمة <span class="req">*</span></label>
+        <select id="fteacher" required>
+          <option value="" disabled selected>اختاري اسمك</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="fdone">ما تم تنفيذه في حصة الاحتياط</label>
+      <select id="fdone" required>
+        <option value="" disabled selected>اختاري من القائمة</option>
+        <option>القيم والمواطنة الصالحة</option>
+        <option>المهارات الأساسية للمواد الدراسية</option>
+        <option>الأنشطة المطبقة مع الطالبات حسب الإطار التنظيمي لحصص الاحتياط</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="fevidence">الشواهد <span class="req">*</span></label>
+      <textarea id="fevidence" maxlength="80" required placeholder="جملة واحدة: صورة، دفتر نشاط، ورقة عمل..."></textarea>
+      <div class="charcount" id="charcount">0 / 80</div>
+    </div>
+    <div class="field">
+      <label for="fimage">صورة الشاهد (اختياري)</label>
+      <input type="file" id="fimage" accept="image/*" capture="environment">
+      <div class="hint" id="imgHint"></div>
+    </div>
+    <button type="submit" id="submitBtn">تسجيل الحصة</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</div>
+
+<script>
+const TEACHERS = [
+  "ابتسام العبيدي","أمل الحربي","أمل العصيب","أمينة العنزي","بدرية الزغيبي",
+  "جميلة الساكت","جيهان البلوي","خزنة الحربي","دلال الحربي","دليل الشمري",
+  "مياني المطيري","رفعة الدوسري","روابي المطيري","رومية الظهيري","سارة السبيعي",
+  "علياء السعدي","لطيفة الفهيد","مشاعل الجبسي","منيرة المطيري","مها الرشيدي",
+  "نوير الحارثي"
+];
+const teacherSelect = document.getElementById('fteacher');
+TEACHERS.forEach(name=>{
+  const opt = document.createElement('option');
+  opt.value = name; opt.textContent = name;
+  teacherSelect.appendChild(opt);
+});
+
+const dayNames = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+const dateInput = document.getElementById('fdate');
+const dayInput = document.getElementById('fday');
+dateInput.addEventListener('change', ()=>{
+  if(!dateInput.value){ dayInput.value=""; return; }
+  const d = new Date(dateInput.value + "T00:00:00");
+  dayInput.value = dayNames[d.getDay()];
+});
+// default to today
+dateInput.value = new Date().toISOString().slice(0,10);
+dateInput.dispatchEvent(new Event('change'));
+
+const evidence = document.getElementById('fevidence');
+const charcount = document.getElementById('charcount');
+evidence.addEventListener('input', ()=>{
+  const len = evidence.value.length;
+  charcount.textContent = len + " / 80";
+  charcount.classList.toggle('over', len >= 80);
+});
+
+const form = document.getElementById('f');
+const msg = document.getElementById('msg');
+const submitBtn = document.getElementById('submitBtn');
+const imageInput = document.getElementById('fimage');
+const imgHint = document.getElementById('imgHint');
+
+imageInput.addEventListener('change', ()=>{
+  const f = imageInput.files[0];
+  imgHint.textContent = f ? `${f.name} — سيُصغَّر تلقائيًا قبل الإرسال` : '';
+});
+
+// Resizes/compresses the photo in the browser so uploads stay small and fast
+// on mobile data, regardless of the original camera resolution.
+function resizeImage(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      let { width, height } = img;
+      if(width > height && width > maxDim){ height = Math.round(height * maxDim / width); width = maxDim; }
+      else if(height > maxDim){ width = Math.round(width * maxDim / height); height = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  submitBtn.disabled = true;
+  msg.className = 'msg';
+  try{
+    const fd = new FormData();
+    fd.append('entry_date', dateInput.value);
+    fd.append('period', document.getElementById('fperiod').value);
+    fd.append('teacher', teacherSelect.value);
+    fd.append('done', document.getElementById('fdone').value);
+    fd.append('evidence', evidence.value);
+
+    const file = imageInput.files[0];
+    if(file){
+      const resized = await resizeImage(file, 1000, 0.72);
+      fd.append('image', resized, 'evidence.jpg');
+    }
+
+    const res = await fetch('/api/submit', { method:'POST', body: fd });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'خطأ غير متوقع');
+    msg.textContent = 'تم تسجيل الحصة بنجاح.';
+    msg.classList.add('ok');
+    form.reset();
+    dateInput.value = new Date().toISOString().slice(0,10);
+    dateInput.dispatchEvent(new Event('change'));
+    charcount.textContent = '0 / 80';
+    charcount.classList.remove('over');
+    imgHint.textContent = '';
+  }catch(err){
+    msg.textContent = err.message;
+    msg.classList.add('err');
+  }finally{
+    submitBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

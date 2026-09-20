@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>طباعة شواهد حصص الاحتياط</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#1B2A2E; --paper:#F7F5F0; --card:#FFFFFF; --teal:#0E4F4F; --teal-deep:#0A3B3B; --line:#DDD8CC; --muted:#6B7674; }
+  *{box-sizing:border-box;}
+  body{background:var(--paper); font-family:'Tajawal',sans-serif; color:var(--ink); margin:0; padding:24px;}
+  .toolbar{max-width:900px; margin:0 auto 20px; display:flex; justify-content:space-between; align-items:center;}
+  h1{font-size:19px; font-weight:800; color:var(--teal-deep); margin:0;}
+  button{background:var(--teal); color:#fff; border:none; padding:10px 18px; border-radius:3px; font-family:'Tajawal',sans-serif; font-weight:700; cursor:pointer;}
+  #gate{max-width:320px; margin:60px auto; text-align:center;}
+  #gate input{width:100%; padding:12px; font-size:16px; border:1px solid var(--line); border-radius:3px; text-align:center; letter-spacing:4px;}
+  #gate button{width:100%; margin-top:10px;}
+  #gate .err{color:#A13E3E; font-size:13px; margin-top:8px;}
+  #sheet{display:none;}
+  .grid{max-width:900px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:4px; padding:14px; break-inside:avoid;}
+  .card img{width:100%; height:220px; object-fit:cover; border-radius:3px; border:1px solid var(--line); margin-bottom:10px;}
+  .cap{font-size:12.5px; line-height:1.7;}
+  .cap b{color:var(--teal-deep);}
+  .empty{max-width:900px; margin:40px auto; text-align:center; color:var(--muted);}
+  @media print{
+    .toolbar, #gate{display:none;}
+    body{padding:0; background:#fff;}
+    .grid{max-width:100%; gap:12px;}
+    .card{box-shadow:none;}
+  }
+</style>
+</head>
+<body>
+<div id="gate">
+  <h1 style="margin-bottom:16px;">دخول الوكيلة</h1>
+  <input type="password" id="pinInput" placeholder="رمز الدخول" inputmode="numeric">
+  <button id="pinBtn">دخول</button>
+  <div class="err" id="pinErr"></div>
+</div>
+
+<div id="sheet">
+  <div class="toolbar">
+    <h1>شواهد حصص الاحتياط — للطباعة</h1>
+    <button onclick="window.print()">طباعة</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" style="display:none;">لا توجد صور شواهد مسجّلة بعد.</div>
+</div>
+
+<script>
+let PIN = sessionStorage.getItem('staffPin') || '';
+
+async function tryLoad(pin){
+  const res = await fetch('/api/summary?pin=' + encodeURIComponent(pin));
+  if(!res.ok) return false;
+  PIN = pin;
+  sessionStorage.setItem('staffPin', pin);
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('sheet').style.display = 'block';
+  await load();
+  return true;
+}
+
+document.getElementById('pinBtn').addEventListener('click', async ()=>{
+  const pin = document.getElementById('pinInput').value;
+  const ok = await tryLoad(pin);
+  if(!ok) document.getElementById('pinErr').textContent = 'رمز غير صحيح';
+});
+
+async function load(){
+  const rows = await fetch('/api/entries?pin=' + encodeURIComponent(PIN)).then(r=>r.json());
+  const withPhotos = rows.filter(r => r.has_image);
+  const grid = document.getElementById('grid');
+  if(!withPhotos.length){
+    document.getElementById('empty').style.display = 'block';
+    return;
+  }
+  grid.innerHTML = withPhotos.map(r => `
+    <div class="card">
+      <img src="/api/image/${r.id}?pin=${encodeURIComponent(PIN)}" alt="شاهد">
+      <div class="cap">
+        <b>المعلمة:</b> ${r.teacher}<br>
+        <b>التاريخ:</b> ${r.entry_date} (${r.day}) — <b>الحصة:</b> ${r.period}<br>
+        <b>ما تم تنفيذه:</b> ${r.done}<br>
+        <b>الشاهد:</b> ${r.evidence}
+      </div>
+    </div>
+  `).join('');
+}
+
+if(PIN){ tryLoad(PIN); }
+</script>
+</body>
+</html>
