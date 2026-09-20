@@ -96,6 +96,11 @@
       <textarea id="fevidence" maxlength="80" required placeholder="جملة واحدة: صورة، دفتر نشاط، ورقة عمل..."></textarea>
       <div class="charcount" id="charcount">0 / 80</div>
     </div>
+    <div class="field">
+      <label for="fimage">صورة الشاهد (اختياري)</label>
+      <input type="file" id="fimage" accept="image/*" capture="environment">
+      <div class="hint" id="imgHint"></div>
+    </div>
     <button type="submit" id="submitBtn">تسجيل الحصة</button>
     <div class="msg" id="msg"></div>
   </form>
@@ -139,23 +144,55 @@ evidence.addEventListener('input', ()=>{
 const form = document.getElementById('f');
 const msg = document.getElementById('msg');
 const submitBtn = document.getElementById('submitBtn');
+const imageInput = document.getElementById('fimage');
+const imgHint = document.getElementById('imgHint');
+
+imageInput.addEventListener('change', ()=>{
+  const f = imageInput.files[0];
+  imgHint.textContent = f ? `${f.name} — سيُصغَّر تلقائيًا قبل الإرسال` : '';
+});
+
+// Resizes/compresses the photo in the browser so uploads stay small and fast
+// on mobile data, regardless of the original camera resolution.
+function resizeImage(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      let { width, height } = img;
+      if(width > height && width > maxDim){ height = Math.round(height * maxDim / width); width = maxDim; }
+      else if(height > maxDim){ width = Math.round(width * maxDim / height); height = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
   submitBtn.disabled = true;
   msg.className = 'msg';
   try{
-    const res = await fetch('/api/submit', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        entry_date: dateInput.value,
-        period: document.getElementById('fperiod').value,
-        teacher: teacherSelect.value,
-        done: document.getElementById('fdone').value,
-        evidence: evidence.value
-      })
-    });
+    const fd = new FormData();
+    fd.append('entry_date', dateInput.value);
+    fd.append('period', document.getElementById('fperiod').value);
+    fd.append('teacher', teacherSelect.value);
+    fd.append('done', document.getElementById('fdone').value);
+    fd.append('evidence', evidence.value);
+
+    const file = imageInput.files[0];
+    if(file){
+      const resized = await resizeImage(file, 1000, 0.72);
+      fd.append('image', resized, 'evidence.jpg');
+    }
+
+    const res = await fetch('/api/submit', { method:'POST', body: fd });
     const data = await res.json();
     if(!res.ok) throw new Error(data.error || 'خطأ غير متوقع');
     msg.textContent = 'تم تسجيل الحصة بنجاح.';
@@ -165,6 +202,7 @@ form.addEventListener('submit', async (e)=>{
     dateInput.dispatchEvent(new Event('change'));
     charcount.textContent = '0 / 80';
     charcount.classList.remove('over');
+    imgHint.textContent = '';
   }catch(err){
     msg.textContent = err.message;
     msg.classList.add('err');

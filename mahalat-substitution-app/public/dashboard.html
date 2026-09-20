@@ -55,6 +55,7 @@
   <div class="section">
     <h2>سجل الحصص</h2>
     <button class="export-btn" id="exportBtn">تصدير Excel</button>
+    <a class="export-btn" id="printPhotosBtn" href="/print-photos.html" style="display:inline-block; text-decoration:none; margin-inline-start:8px;">طباعة الشواهد المصوّرة</a>
     <div class="table-wrap" id="entriesTable"></div>
   </div>
 </div>
@@ -110,9 +111,13 @@ function renderByTeacher(rows){
 function renderEntries(rows){
   const el = document.getElementById('entriesTable');
   if(!rows.length){ el.innerHTML = '<div class="empty">لا توجد حصص مسجّلة بعد.</div>'; return; }
-  let html = '<table><thead><tr><th>التاريخ</th><th>اليوم</th><th>الحصة</th><th>المعلمة</th><th>ما تم تنفيذه</th><th>الشواهد</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>التاريخ</th><th>اليوم</th><th>الحصة</th><th>المعلمة</th><th>ما تم تنفيذه</th><th>الشواهد</th><th>الصورة</th></tr></thead><tbody>';
   rows.forEach(r=>{
-    html += `<tr><td>${r.entry_date}</td><td>${r.day}</td><td>${r.period}</td><td>${r.teacher}</td><td>${r.done}</td><td>${r.evidence}</td></tr>`;
+    const imgUrl = '/api/image/' + r.id + '?pin=' + encodeURIComponent(PIN);
+    const photoCell = r.has_image
+      ? `<a href="${imgUrl}" target="_blank"><img src="${imgUrl}" alt="شاهد" style="width:44px;height:44px;object-fit:cover;border-radius:3px;border:1px solid var(--line);"></a>`
+      : '—';
+    html += `<tr><td>${r.entry_date}</td><td>${r.day}</td><td>${r.period}</td><td>${r.teacher}</td><td>${r.done}</td><td>${r.evidence}</td><td>${photoCell}</td></tr>`;
   });
   html += '</tbody></table>';
   el.innerHTML = html;

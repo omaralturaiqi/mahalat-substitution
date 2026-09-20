@@ -2,6 +2,16 @@ const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
 const ExcelJS = require('exceljs');
+const multer = require('multer');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB max per image
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) return cb(new Error('يجب أن يكون الملف صورة'));
+    cb(null, true);
+  }
+});
 
 const app = express();
 app.use(express.json());
@@ -30,6 +40,9 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Added later: optional evidence photo, stored directly in the database.
+  await pool.query(`ALTER TABLE entries ADD COLUMN IF NOT EXISTS evidence_image BYTEA;`);
+  await pool.query(`ALTER TABLE entries ADD COLUMN IF NOT EXISTS evidence_image_mime TEXT;`);
 }
 
 function dayNameFor(dateStr) {
@@ -38,25 +51,36 @@ function dayNameFor(dateStr) {
 }
 
 // ---- Teacher-facing API ----
-app.post('/api/submit', async (req, res) => {
-  try {
-    const { entry_date, period, teacher, done, evidence } = req.body;
-    if (!entry_date || !period || !teacher || !done || !evidence) {
-      return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
+// Accepts multipart/form-data so an optional evidence photo can ride along
+// with the same fields. The image field name is "image".
+app.post('/api/submit', (req, res) => {
+  upload.single('image')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: uploadErr.message === 'يجب أن يكون الملف صورة'
+        ? uploadErr.message
+        : 'تعذر رفع الصورة (الحد الأقصى 3 ميجابايت)' });
     }
-    if (String(evidence).length > 80) {
-      return res.status(400).json({ error: 'الشواهد يجب ألا تتجاوز 80 حرفًا' });
+    try {
+      const { entry_date, period, teacher, done, evidence } = req.body;
+      if (!entry_date || !period || !teacher || !done || !evidence) {
+        return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
+      }
+      if (String(evidence).length > 80) {
+        return res.status(400).json({ error: 'الشواهد يجب ألا تتجاوز 80 حرفًا' });
+      }
+      const image = req.file ? req.file.buffer : null;
+      const imageMime = req.file ? req.file.mimetype : null;
+      const result = await pool.query(
+        `INSERT INTO entries (entry_date, period, teacher, done, evidence, evidence_image, evidence_image_mime)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [entry_date, period, teacher, done, evidence, image, imageMime]
+      );
+      res.json({ ok: true, id: result.rows[0].id });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'تعذر حفظ البيانات، حاولي مرة أخرى' });
     }
-    const result = await pool.query(
-      `INSERT INTO entries (entry_date, period, teacher, done, evidence)
-       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [entry_date, period, teacher, done, evidence]
-    );
-    res.json({ ok: true, id: result.rows[0].id });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'تعذر حفظ البيانات، حاولي مرة أخرى' });
-  }
+  });
 });
 
 // ---- Staff-facing API (protected by a simple PIN header) ----
@@ -69,7 +93,8 @@ function checkPin(req, res, next) {
 app.get('/api/entries', checkPin, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, entry_date, period, teacher, done, evidence, created_at
+      `SELECT id, entry_date, period, teacher, done, evidence, created_at,
+              (evidence_image IS NOT NULL) AS has_image
        FROM entries ORDER BY entry_date DESC, period ASC, id DESC LIMIT 500`
     );
     const rows = result.rows.map(r => ({
@@ -81,6 +106,23 @@ app.get('/api/entries', checkPin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'تعذر جلب البيانات' });
+  }
+});
+
+// Serves one entry's evidence photo (protected by the same staff PIN).
+app.get('/api/image/:id', checkPin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT evidence_image, evidence_image_mime FROM entries WHERE id = $1`,
+      [req.params.id]
+    );
+    const row = result.rows[0];
+    if (!row || !row.evidence_image) return res.status(404).send('لا توجد صورة');
+    res.setHeader('Content-Type', row.evidence_image_mime || 'image/jpeg');
+    res.send(row.evidence_image);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('تعذر تحميل الصورة');
   }
 });
 
@@ -108,7 +150,8 @@ app.get('/api/summary', checkPin, async (req, res) => {
 app.get('/api/export', checkPin, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT entry_date, period, teacher, done, evidence, created_at
+      `SELECT id, entry_date, period, teacher, done, evidence, created_at,
+              evidence_image, evidence_image_mime
        FROM entries ORDER BY entry_date DESC, period ASC`
     );
     const wb = new ExcelJS.Workbook();
@@ -120,10 +163,13 @@ app.get('/api/export', checkPin, async (req, res) => {
       { header: 'اسم المعلمة', key: 'teacher', width: 22 },
       { header: 'ما تم تنفيذه', key: 'done', width: 40 },
       { header: 'الشواهد', key: 'evidence', width: 32 },
+      { header: 'صورة الشاهد', key: 'photo', width: 16 },
       { header: 'وقت التسجيل', key: 'created_at', width: 20 }
     ];
     ws.getRow(1).font = { bold: true };
-    result.rows.forEach(r => {
+
+    result.rows.forEach((r, idx) => {
+      const rowNum = idx + 2; // header is row 1
       const dateStr = r.entry_date.toISOString().slice(0, 10);
       ws.addRow({
         entry_date: dateStr,
@@ -132,9 +178,20 @@ app.get('/api/export', checkPin, async (req, res) => {
         teacher: r.teacher,
         done: r.done,
         evidence: r.evidence,
+        photo: '',
         created_at: r.created_at.toISOString().slice(0, 16).replace('T', ' ')
       });
+      if (r.evidence_image) {
+        const ext = (r.evidence_image_mime || '').includes('png') ? 'png' : 'jpeg';
+        const imgId = wb.addImage({ buffer: r.evidence_image, extension: ext });
+        ws.addImage(imgId, {
+          tl: { col: 6, row: rowNum - 1 },
+          ext: { width: 90, height: 90 }
+        });
+        ws.getRow(rowNum).height = 70;
+      }
     });
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=توثيق_حصص_الاحتياط.xlsx');
     await wb.xlsx.write(res);
