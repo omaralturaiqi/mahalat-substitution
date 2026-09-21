@@ -149,10 +149,18 @@ app.get('/api/summary', checkPin, async (req, res) => {
 
 app.get('/api/export', checkPin, async (req, res) => {
   try {
+    const { from, to } = req.query;
+    const conditions = [];
+    const params = [];
+    if (from) { params.push(from); conditions.push(`entry_date >= $${params.length}`); }
+    if (to) { params.push(to); conditions.push(`entry_date <= $${params.length}`); }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
     const result = await pool.query(
       `SELECT id, entry_date, period, teacher, done, evidence, created_at,
               evidence_image, evidence_image_mime
-       FROM entries ORDER BY entry_date DESC, period ASC`
+       FROM entries ${whereClause} ORDER BY entry_date DESC, period ASC`,
+      params
     );
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('حصص الاحتياط', { views: [{ rightToLeft: true }] });
