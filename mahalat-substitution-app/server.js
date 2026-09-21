@@ -43,6 +43,43 @@ async function initDb() {
   // Added later: optional evidence photo, stored directly in the database.
   await pool.query(`ALTER TABLE entries ADD COLUMN IF NOT EXISTS evidence_image BYTEA;`);
   await pool.query(`ALTER TABLE entries ADD COLUMN IF NOT EXISTS evidence_image_mime TEXT;`);
+
+  // ---- School timetable builder (separate feature; does not touch entries above) ----
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tt_subjects (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tt_classes (
+      id SERIAL PRIMARY KEY,
+      grade TEXT NOT NULL,
+      section TEXT NOT NULL,
+      UNIQUE(grade, section)
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tt_requirements (
+      id SERIAL PRIMARY KEY,
+      class_id INT NOT NULL REFERENCES tt_classes(id) ON DELETE CASCADE,
+      subject_id INT NOT NULL REFERENCES tt_subjects(id) ON DELETE CASCADE,
+      teacher TEXT NOT NULL,
+      weekly_periods INT NOT NULL CHECK (weekly_periods > 0),
+      UNIQUE(class_id, subject_id)
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tt_slots (
+      id SERIAL PRIMARY KEY,
+      class_id INT NOT NULL REFERENCES tt_classes(id) ON DELETE CASCADE,
+      day INT NOT NULL,
+      period INT NOT NULL,
+      subject_id INT REFERENCES tt_subjects(id) ON DELETE SET NULL,
+      teacher TEXT,
+      UNIQUE(class_id, day, period)
+    );
+  `);
 }
 
 function dayNameFor(dateStr) {
@@ -208,6 +245,255 @@ app.get('/api/export', checkPin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'تعذر تصدير الملف' });
+  }
+});
+
+// ============================================================
+// School Timetable Builder (separate feature — reads/writes its own
+// tt_* tables only; never touches the `entries` substitution-tracker data)
+// ============================================================
+const TT_DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+const TT_PERIODS = 7;
+
+// -- Subjects --
+app.get('/api/tt/subjects', checkPin, async (req, res) => {
+  const r = await pool.query('SELECT * FROM tt_subjects ORDER BY name');
+  res.json(r.rows);
+});
+app.post('/api/tt/subjects', checkPin, async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'اسم المادة مطلوب' });
+    const r = await pool.query('INSERT INTO tt_subjects (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING *', [name]);
+    res.json(r.rows[0] || { ok: true, existed: true });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'تعذر إضافة المادة' }); }
+});
+app.delete('/api/tt/subjects/:id', checkPin, async (req, res) => {
+  await pool.query('DELETE FROM tt_subjects WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// -- Classes --
+app.get('/api/tt/classes', checkPin, async (req, res) => {
+  const r = await pool.query('SELECT * FROM tt_classes ORDER BY grade, section');
+  res.json(r.rows);
+});
+app.post('/api/tt/classes', checkPin, async (req, res) => {
+  try {
+    const { grade, section } = req.body;
+    if (!grade || !section) return res.status(400).json({ error: 'الصف والفصل مطلوبان' });
+    const r = await pool.query(
+      'INSERT INTO tt_classes (grade, section) VALUES ($1,$2) ON CONFLICT (grade, section) DO NOTHING RETURNING *',
+      [grade, section]
+    );
+    res.json(r.rows[0] || { ok: true, existed: true });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'تعذر إضافة الفصل' }); }
+});
+app.delete('/api/tt/classes/:id', checkPin, async (req, res) => {
+  await pool.query('DELETE FROM tt_classes WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// -- Requirements (weekly periods + teacher per class/subject) --
+app.get('/api/tt/requirements', checkPin, async (req, res) => {
+  const r = await pool.query(`
+    SELECT r.*, s.name AS subject_name, c.grade, c.section
+    FROM tt_requirements r
+    JOIN tt_subjects s ON s.id = r.subject_id
+    JOIN tt_classes c ON c.id = r.class_id
+    ORDER BY c.grade, c.section, s.name
+  `);
+  res.json(r.rows);
+});
+app.post('/api/tt/requirements', checkPin, async (req, res) => {
+  try {
+    const { class_id, subject_id, teacher, weekly_periods } = req.body;
+    if (!class_id || !subject_id || !teacher || !weekly_periods) {
+      return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
+    }
+    const r = await pool.query(
+      `INSERT INTO tt_requirements (class_id, subject_id, teacher, weekly_periods) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (class_id, subject_id) DO UPDATE SET teacher=$3, weekly_periods=$4 RETURNING *`,
+      [class_id, subject_id, teacher, weekly_periods]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'تعذر حفظ المتطلب' }); }
+});
+app.delete('/api/tt/requirements/:id', checkPin, async (req, res) => {
+  await pool.query('DELETE FROM tt_requirements WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// -- Slots (the generated/edited timetable grid) --
+app.get('/api/tt/slots', checkPin, async (req, res) => {
+  const { class_id, teacher } = req.query;
+  let query = `
+    SELECT sl.*, s.name AS subject_name, c.grade, c.section
+    FROM tt_slots sl
+    LEFT JOIN tt_subjects s ON s.id = sl.subject_id
+    JOIN tt_classes c ON c.id = sl.class_id
+  `;
+  const params = [];
+  if (class_id) { params.push(class_id); query += ` WHERE sl.class_id = $${params.length}`; }
+  else if (teacher) { params.push(teacher); query += ` WHERE sl.teacher = $${params.length}`; }
+  query += ' ORDER BY sl.day, sl.period';
+  const r = await pool.query(query, params);
+  res.json(r.rows);
+});
+
+app.put('/api/tt/slots', checkPin, async (req, res) => {
+  try {
+    const { class_id, day, period, subject_id, teacher } = req.body;
+    if (class_id == null || day == null || period == null) {
+      return res.status(400).json({ error: 'بيانات الخانة ناقصة' });
+    }
+    if (!subject_id) {
+      await pool.query('DELETE FROM tt_slots WHERE class_id=$1 AND day=$2 AND period=$3', [class_id, day, period]);
+      return res.json({ ok: true, cleared: true });
+    }
+    const r = await pool.query(
+      `INSERT INTO tt_slots (class_id, day, period, subject_id, teacher) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (class_id, day, period) DO UPDATE SET subject_id=$4, teacher=$5 RETURNING *`,
+      [class_id, day, period, subject_id, teacher || null]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { console.error(err); res.status(500).json({ error: 'تعذر حفظ الخانة' }); }
+});
+
+// -- Automatic generation (greedy + randomized restarts) --
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function runGenerationAttempt(activities, numDays, numPeriods) {
+  const acts = shuffle(activities);
+  const classBusy = new Set();
+  const teacherBusy = new Set();
+  const classDaySubjectCount = {};
+  const placements = [];
+  const unplaced = [];
+
+  for (const act of acts) {
+    const candidates = [];
+    for (let d = 0; d < numDays; d++) {
+      for (let p = 1; p <= numPeriods; p++) candidates.push([d, p]);
+    }
+    // Prefer days where this subject hasn't already been placed for this class today
+    candidates.sort((a, b) => {
+      const ca = ((classDaySubjectCount[act.class_id] || {})[a[0]] || {})[act.subject_id] || 0;
+      const cb = ((classDaySubjectCount[act.class_id] || {})[b[0]] || {})[act.subject_id] || 0;
+      if (ca !== cb) return ca - cb;
+      return Math.random() - 0.5;
+    });
+
+    let placed = false;
+    for (const [d, p] of candidates) {
+      const ck = `c${act.class_id}-${d}-${p}`;
+      const tk = `t${act.teacher}-${d}-${p}`;
+      if (classBusy.has(ck) || teacherBusy.has(tk)) continue;
+      classBusy.add(ck);
+      teacherBusy.add(tk);
+      classDaySubjectCount[act.class_id] = classDaySubjectCount[act.class_id] || {};
+      classDaySubjectCount[act.class_id][d] = classDaySubjectCount[act.class_id][d] || {};
+      classDaySubjectCount[act.class_id][d][act.subject_id] =
+        (classDaySubjectCount[act.class_id][d][act.subject_id] || 0) + 1;
+      placements.push({ class_id: act.class_id, day: d, period: p, subject_id: act.subject_id, teacher: act.teacher });
+      placed = true;
+      break;
+    }
+    if (!placed) unplaced.push(act);
+  }
+  return { placements, unplaced };
+}
+
+app.post('/api/tt/generate', checkPin, async (req, res) => {
+  try {
+    const reqs = (await pool.query('SELECT * FROM tt_requirements')).rows;
+    if (!reqs.length) return res.status(400).json({ error: 'لا توجد متطلبات مواد محفوظة بعد' });
+
+    const activities = [];
+    reqs.forEach(r => {
+      for (let i = 0; i < r.weekly_periods; i++) {
+        activities.push({ class_id: r.class_id, subject_id: r.subject_id, teacher: r.teacher });
+      }
+    });
+
+    let best = null;
+    const ATTEMPTS = 120;
+    for (let i = 0; i < ATTEMPTS; i++) {
+      const result = runGenerationAttempt(activities, TT_DAY_NAMES.length, TT_PERIODS);
+      if (!best || result.unplaced.length < best.unplaced.length) {
+        best = result;
+        if (best.unplaced.length === 0) break;
+      }
+    }
+
+    await pool.query('DELETE FROM tt_slots');
+    for (const p of best.placements) {
+      await pool.query(
+        `INSERT INTO tt_slots (class_id, day, period, subject_id, teacher) VALUES ($1,$2,$3,$4,$5)`,
+        [p.class_id, p.day, p.period, p.subject_id, p.teacher]
+      );
+    }
+
+    const unplacedDetails = await Promise.all(best.unplaced.map(async u => {
+      const c = await pool.query('SELECT grade, section FROM tt_classes WHERE id=$1', [u.class_id]);
+      const s = await pool.query('SELECT name FROM tt_subjects WHERE id=$1', [u.subject_id]);
+      return {
+        class: c.rows[0] ? `${c.rows[0].grade} - ${c.rows[0].section}` : u.class_id,
+        subject: s.rows[0] ? s.rows[0].name : u.subject_id,
+        teacher: u.teacher
+      };
+    }));
+
+    res.json({ placed: best.placements.length, unplaced: unplacedDetails });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر توليد الجدول' });
+  }
+});
+
+app.get('/api/tt/export', checkPin, async (req, res) => {
+  try {
+    const classes = (await pool.query('SELECT * FROM tt_classes ORDER BY grade, section')).rows;
+    const slots = (await pool.query(`
+      SELECT sl.*, s.name AS subject_name FROM tt_slots sl
+      LEFT JOIN tt_subjects s ON s.id = sl.subject_id
+    `)).rows;
+
+    const wb = new ExcelJS.Workbook();
+    for (const cls of classes) {
+      const ws = wb.addWorksheet(`${cls.grade}-${cls.section}`.slice(0, 28), { views: [{ rightToLeft: true }] });
+      ws.getCell(1, 1).value = 'الحصة \\ اليوم';
+      TT_DAY_NAMES.forEach((d, i) => { ws.getCell(1, i + 2).value = d; ws.getCell(1, i + 2).font = { bold: true }; });
+      ws.getColumn(1).width = 12;
+      for (let i = 2; i <= TT_DAY_NAMES.length + 1; i++) ws.getColumn(i).width = 20;
+      for (let p = 1; p <= TT_PERIODS; p++) {
+        ws.getCell(p + 1, 1).value = 'حصة ' + p;
+        ws.getCell(p + 1, 1).font = { bold: true };
+      }
+      const bySlot = {};
+      slots.filter(s => s.class_id === cls.id).forEach(s => { bySlot[`${s.day}-${s.period}`] = s; });
+      for (let d = 0; d < TT_DAY_NAMES.length; d++) {
+        for (let p = 1; p <= TT_PERIODS; p++) {
+          const s = bySlot[`${d}-${p}`];
+          if (s) ws.getCell(p + 1, d + 2).value = `${s.subject_name || ''}\n${s.teacher || ''}`;
+        }
+      }
+    }
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const utf8Name = encodeURIComponent('الجدول_المدرسي.xlsx');
+    res.setHeader('Content-Disposition', `attachment; filename="school-timetable.xlsx"; filename*=UTF-8''${utf8Name}`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'تعذر تصدير الجدول' });
   }
 });
 

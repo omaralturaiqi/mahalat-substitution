@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>الجدول المدرسي</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2A2E; --paper:#F7F5F0; --card:#FFFFFF;
+    --teal:#0E4F4F; --teal-deep:#0A3B3B; --line:#DDD8CC; --muted:#6B7674; --danger:#A13E3E;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--paper); font-family:'Tajawal',sans-serif; color:var(--ink);
+    min-height:100vh; padding:calc(env(safe-area-inset-top,0px) + 24px) 16px 50px;}
+  .wrap{max-width:1000px;margin:0 auto;}
+  h1{font-size:22px; font-weight:800; color:var(--teal-deep); margin:0 0 6px;}
+  .sub{color:var(--muted); font-size:13px; margin:0 0 20px;}
+  #gate{max-width:340px; margin:60px auto; text-align:center;}
+  #gate input{width:100%; padding:12px; font-size:16px; border:1px solid var(--line); border-radius:3px; text-align:center; letter-spacing:4px;}
+  #gate button{width:100%; margin-top:10px; background:var(--teal); color:#fff; border:none; padding:12px; border-radius:3px; font-family:'Tajawal',sans-serif; font-weight:700; cursor:pointer;}
+  #gate .err{color:#A13E3E; font-size:13px; margin-top:8px;}
+  #app{display:none;}
+
+  .tabs{display:flex; gap:6px; margin-bottom:20px; flex-wrap:wrap; border-bottom:2px solid var(--line);}
+  .tab{padding:10px 16px; font-size:13.5px; font-weight:700; color:var(--muted); cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px;}
+  .tab.active{color:var(--teal-deep); border-bottom-color:var(--teal);}
+  .panel{display:none;}
+  .panel.active{display:block;}
+
+  .section{background:var(--card); border:1px solid var(--line); border-radius:4px; padding:18px; margin-bottom:18px;}
+  .section h2{font-size:15px; font-weight:800; color:var(--teal-deep); margin:0 0 14px;}
+  .row-form{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;}
+  .field{display:flex; flex-direction:column; gap:5px;}
+  .field label{font-size:12.5px; font-weight:700;}
+  .field input, .field select{font-family:'Tajawal',sans-serif; padding:8px 10px; border:1px solid var(--line); border-radius:3px; font-size:13.5px; min-width:140px;}
+  button.btn{background:var(--teal); color:#fff; border:none; padding:9px 18px; border-radius:3px; font-family:'Tajawal',sans-serif; font-size:13.5px; font-weight:700; cursor:pointer;}
+  button.btn:hover{background:var(--teal-deep);}
+  button.btn.outline{background:transparent; color:var(--teal); border:1px solid var(--teal);}
+  button.btn.danger{background:transparent; color:var(--danger); border:1px solid var(--danger); padding:4px 10px; font-size:12px;}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th,td{padding:8px 9px; border-bottom:1px solid var(--line); text-align:right;}
+  th{background:#EFEEE7; color:var(--teal-deep); font-weight:700;}
+  .table-wrap{overflow-x:auto;}
+  .empty{color:var(--muted); text-align:center; padding:16px; font-size:13px;}
+
+  .grid-table{border-collapse:collapse; width:100%; min-width:700px;}
+  .grid-table th, .grid-table td{border:1px solid var(--line); padding:6px; text-align:center; font-size:12px;}
+  .grid-table th{background:#EFEEE7;}
+  .grid-cell select{width:100%; font-size:11.5px; padding:4px; border:1px solid var(--line); border-radius:3px; font-family:'Tajawal',sans-serif;}
+  .grid-cell .teacher-name{font-size:10.5px; color:var(--muted); margin-top:2px; display:block;}
+
+  .msg{padding:10px 14px; border-radius:3px; font-size:13px; font-weight:700; margin:10px 0;}
+  .msg.ok{background:#EAF2EE; border:1px solid #BFDACB; color:#1F5C39;}
+  .msg.err{background:#FBEAEA; border:1px solid #E3B7B7; color:var(--danger);}
+  .unplaced-list{font-size:12.5px; margin:8px 0 0; padding-inline-start:20px;}
+
+  .back-link{display:inline-block; margin-bottom:16px; color:var(--teal); font-size:13px; text-decoration:none; font-weight:700;}
+  .edu-school{ margin:0 auto 8px; max-width:88%; background:#fff; border:2px solid #15445A; color:#15445A; font-weight:800; font-size:14px; text-align:center; padding:9px 14px; border-radius:4px; }
+  .edu-credit{ text-align:center; font-size:11.5px; color:#6B7674; margin:0 0 18px; }
+</style>
+</head>
+<body>
+<div id="gate">
+  <h1 style="margin-bottom:16px;">دخول الوكيلة</h1>
+  <input type="password" id="pinInput" placeholder="رمز الدخول" inputmode="numeric">
+  <button id="pinBtn">دخول</button>
+  <div class="err" id="pinErr"></div>
+</div>
+
+<div class="wrap" id="app">
+  <a class="back-link" href="/dashboard.html">&#8592; رجوع للوحة معلومات الاحتياط</a>
+  <div class="edu-school">الابتدائية السابعة والروضة الملحقة</div>
+  <div class="edu-credit">تنفيذ: وكيلة المدرسة نوف الصالح &nbsp;|&nbsp; مديرة المدرسة: مشاعل الزغيبي</div>
+  <h1>الجدول المدرسي</h1>
+  <p class="sub">أدخلي المواد والفصول ومتطلباتها، ثم ولّدي الجدول تلقائيًا، وعدّلي عليه يدويًا عند الحاجة.</p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="setup">1. إعداد المواد والفصول</div>
+    <div class="tab" data-tab="requirements">2. متطلبات كل فصل</div>
+    <div class="tab" data-tab="generate">3. توليد الجدول</div>
+    <div class="tab" data-tab="view">4. عرض / طباعة</div>
+  </div>
+
+  <!-- Panel 1: subjects & classes -->
+  <div class="panel active" id="panel-setup">
+    <div class="section">
+      <h2>المواد الدراسية</h2>
+      <div class="row-form">
+        <div class="field"><label>اسم المادة</label><input type="text" id="newSubjectName" placeholder="مثال: الرياضيات"></div>
+        <button class="btn" id="addSubjectBtn">إضافة مادة</button>
+      </div>
+      <div class="table-wrap"><table id="subjectsTable"><thead><tr><th>المادة</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="section">
+      <h2>الفصول</h2>
+      <div class="row-form">
+        <div class="field"><label>الصف</label><input type="text" id="newClassGrade" placeholder="مثال: الرابع"></div>
+        <div class="field"><label>الفصل</label><input type="text" id="newClassSection" placeholder="مثال: 2"></div>
+        <button class="btn" id="addClassBtn">إضافة فصل</button>
+      </div>
+      <div class="table-wrap"><table id="classesTable"><thead><tr><th>الصف</th><th>الفصل</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- Panel 2: requirements -->
+  <div class="panel" id="panel-requirements">
+    <div class="section">
+      <h2>إضافة متطلب (مادة + معلمة + عدد حصص أسبوعيًا لفصل معيّن)</h2>
+      <div class="row-form">
+        <div class="field"><label>الفصل</label><select id="reqClass"></select></div>
+        <div class="field"><label>المادة</label><select id="reqSubject"></select></div>
+        <div class="field"><label>المعلمة</label><select id="reqTeacher"></select></div>
+        <div class="field"><label>حصص/أسبوع</label><input type="number" id="reqPeriods" min="1" max="35" style="min-width:80px;"></div>
+        <button class="btn" id="addReqBtn">حفظ</button>
+      </div>
+      <div class="table-wrap"><table id="reqTable"><thead><tr><th>الصف</th><th>الفصل</th><th>المادة</th><th>المعلمة</th><th>حصص/أسبوع</th><th></th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- Panel 3: generate -->
+  <div class="panel" id="panel-generate">
+    <div class="section">
+      <h2>توليد الجدول تلقائيًا</h2>
+      <p class="sub" style="margin-bottom:14px;">يوزّع النظام كل الحصص المطلوبة على الأيام والفصول تلقائيًا بدون تعارض بين المعلمات. قد يفشل في وضع بعض الحصص إذا كانت البيانات مزدحمة جدًا — بتظهر لك قائمة بأي حصة لم تنعّين وتقدرين تضيفينها يدويًا من تبويب "عرض / طباعة".</p>
+      <button class="btn" id="generateBtn">توليد الجدول الآن</button>
+      <div id="generateResult"></div>
+    </div>
+  </div>
+
+  <!-- Panel 4: view/print -->
+  <div class="panel" id="panel-view">
+    <div class="section">
+      <h2>عرض الجدول</h2>
+      <div class="row-form">
+        <div class="field"><label>عرض حسب</label>
+          <select id="viewMode"><option value="class">فصل</option><option value="teacher">معلمة</option></select>
+        </div>
+        <div class="field" id="viewClassField"><label>الفصل</label><select id="viewClass"></select></div>
+        <div class="field" id="viewTeacherField" style="display:none;"><label>المعلمة</label><select id="viewTeacher"></select></div>
+        <button class="btn outline" id="loadGridBtn">عرض</button>
+        <button class="btn outline" id="exportTtBtn">تصدير الكل Excel</button>
+      </div>
+      <div class="table-wrap" id="gridContainer"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let PIN = sessionStorage.getItem('staffPin') || '';
+const TT_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
+const TT_PERIODS = 7;
+const TEACHERS = [
+  "ابتسام العيدي","أمل الحربي","امل العصلب","أمينة العنزي","بدرية الزغيبي",
+  "جميلة الساكت","جيهان البلوي","خزنة الحربي","دلال الحربي","دليل الشمري",
+  "تهاني المطيري","رفعة الدوسري","روابي المطيري","رومية الظفيري","سارة السهلي",
+  "علياء السعدي","لطيفة الفهيد","مشاعل الجيسي","منيرة المطيري","مها الرشيدي",
+  "نوير الحارثي","حصة السويد","عجايب المطيري","نجاح الرديعان","وضحى البناقي","زينب الحربي"
+];
+
+async function api(path, opts={}){
+  const url = path + (path.includes('?') ? '&' : '?') + 'pin=' + encodeURIComponent(PIN);
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || 'خطأ غير متوقع');
+  return data;
+}
+
+async function tryLoad(pin){
+  const res = await fetch('/api/summary?pin=' + encodeURIComponent(pin));
+  if(!res.ok) return false;
+  PIN = pin;
+  sessionStorage.setItem('staffPin', pin);
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  await initAll();
+  return true;
+}
+document.getElementById('pinBtn').addEventListener('click', async ()=>{
+  const ok = await tryLoad(document.getElementById('pinInput').value);
+  if(!ok) document.getElementById('pinErr').textContent = 'رمز غير صحيح';
+});
+if(PIN){ tryLoad(PIN); }
+
+// ---- tabs ----
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+let subjectsCache = [], classesCache = [];
+
+async function initAll(){
+  populateTeacherSelect();
+  await Promise.all([loadSubjects(), loadClasses()]);
+  await loadRequirements();
+}
+
+function populateTeacherSelect(){
+  const sel = document.getElementById('reqTeacher');
+  sel.innerHTML = TEACHERS.map(t=>`<option value="${t}">${t}</option>`).join('');
+  const vt = document.getElementById('viewTeacher');
+  vt.innerHTML = TEACHERS.map(t=>`<option value="${t}">${t}</option>`).join('');
+}
+
+// ---- Subjects ----
+async function loadSubjects(){
+  subjectsCache = await api('/api/tt/subjects');
+  const tbody = document.querySelector('#subjectsTable tbody');
+  tbody.innerHTML = subjectsCache.length ? subjectsCache.map(s=>`
+    <tr><td>${s.name}</td><td><button class="btn danger" onclick="deleteSubject(${s.id})">حذف</button></td></tr>
+  `).join('') : '<tr><td colspan="2" class="empty">لا توجد مواد بعد</td></tr>';
+  const reqSel = document.getElementById('reqSubject');
+  reqSel.innerHTML = subjectsCache.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+}
+document.getElementById('addSubjectBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('newSubjectName').value.trim();
+  if(!name) return;
+  await api('/api/tt/subjects', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
+  document.getElementById('newSubjectName').value = '';
+  await loadSubjects();
+});
+window.deleteSubject = async (id)=>{
+  await api('/api/tt/subjects/'+id, { method:'DELETE' });
+  await loadSubjects();
+};
+
+// ---- Classes ----
+async function loadClasses(){
+  classesCache = await api('/api/tt/classes');
+  const tbody = document.querySelector('#classesTable tbody');
+  tbody.innerHTML = classesCache.length ? classesCache.map(c=>`
+    <tr><td>${c.grade}</td><td>${c.section}</td><td><button class="btn danger" onclick="deleteClass(${c.id})">حذف</button></td></tr>
+  `).join('') : '<tr><td colspan="3" class="empty">لا توجد فصول بعد</td></tr>';
+  const reqSel = document.getElementById('reqClass');
+  reqSel.innerHTML = classesCache.map(c=>`<option value="${c.id}">${c.grade} - ${c.section}</option>`).join('');
+  const viewSel = document.getElementById('viewClass');
+  viewSel.innerHTML = classesCache.map(c=>`<option value="${c.id}">${c.grade} - ${c.section}</option>`).join('');
+}
+document.getElementById('addClassBtn').addEventListener('click', async ()=>{
+  const grade = document.getElementById('newClassGrade').value.trim();
+  const section = document.getElementById('newClassSection').value.trim();
+  if(!grade || !section) return;
+  await api('/api/tt/classes', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({grade, section}) });
+  document.getElementById('newClassGrade').value = '';
+  document.getElementById('newClassSection').value = '';
+  await loadClasses();
+});
+window.deleteClass = async (id)=>{
+  await api('/api/tt/classes/'+id, { method:'DELETE' });
+  await loadClasses();
+};
+
+// ---- Requirements ----
+async function loadRequirements(){
+  const reqs = await api('/api/tt/requirements');
+  const tbody = document.querySelector('#reqTable tbody');
+  tbody.innerHTML = reqs.length ? reqs.map(r=>`
+    <tr><td>${r.grade}</td><td>${r.section}</td><td>${r.subject_name}</td><td>${r.teacher}</td><td>${r.weekly_periods}</td>
+    <td><button class="btn danger" onclick="deleteReq(${r.id})">حذف</button></td></tr>
+  `).join('') : '<tr><td colspan="6" class="empty">لا توجد متطلبات بعد</td></tr>';
+}
+document.getElementById('addReqBtn').addEventListener('click', async ()=>{
+  const class_id = document.getElementById('reqClass').value;
+  const subject_id = document.getElementById('reqSubject').value;
+  const teacher = document.getElementById('reqTeacher').value;
+  const weekly_periods = document.getElementById('reqPeriods').value;
+  if(!class_id || !subject_id || !teacher || !weekly_periods) return;
+  await api('/api/tt/requirements', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ class_id: Number(class_id), subject_id: Number(subject_id), teacher, weekly_periods: Number(weekly_periods) }) });
+  document.getElementById('reqPeriods').value = '';
+  await loadRequirements();
+});
+window.deleteReq = async (id)=>{
+  await api('/api/tt/requirements/'+id, { method:'DELETE' });
+  await loadRequirements();
+};
+
+// ---- Generate ----
+document.getElementById('generateBtn').addEventListener('click', async ()=>{
+  const resultEl = document.getElementById('generateResult');
+  resultEl.innerHTML = '<div class="msg">جاري التوليد...</div>';
+  try{
+    const data = await api('/api/tt/generate', { method:'POST' });
+    let html = `<div class="msg ok">تم وضع ${data.placed} حصة بنجاح.</div>`;
+    if(data.unplaced && data.unplaced.length){
+      html += `<div class="msg err">تعذر وضع ${data.unplaced.length} حصة تلقائيًا (زحمة بالجدول) — أضيفيها يدويًا من تبويب "عرض / طباعة":
+        <ul class="unplaced-list">${data.unplaced.map(u=>`<li>${u.class} — ${u.subject} — ${u.teacher}</li>`).join('')}</ul></div>`;
+    }
+    resultEl.innerHTML = html;
+  }catch(err){
+    resultEl.innerHTML = `<div class="msg err">${err.message}</div>`;
+  }
+});
+
+// ---- View / edit grid ----
+document.getElementById('viewMode').addEventListener('change', (e)=>{
+  const isClass = e.target.value === 'class';
+  document.getElementById('viewClassField').style.display = isClass ? 'flex' : 'none';
+  document.getElementById('viewTeacherField').style.display = isClass ? 'none' : 'flex';
+});
+
+document.getElementById('loadGridBtn').addEventListener('click', loadGrid);
+
+async function loadGrid(){
+  const mode = document.getElementById('viewMode').value;
+  const container = document.getElementById('gridContainer');
+  if(mode === 'class'){
+    const classId = document.getElementById('viewClass').value;
+    if(!classId){ container.innerHTML = '<div class="empty">أضيفي فصلًا أولًا</div>'; return; }
+    const slots = await api('/api/tt/slots?class_id=' + classId);
+    renderEditableGrid(container, classId, slots);
+  } else {
+    const teacher = document.getElementById('viewTeacher').value;
+    const slots = await api('/api/tt/slots?teacher=' + encodeURIComponent(teacher));
+    renderReadonlyGrid(container, slots);
+  }
+}
+
+function slotKey(day, period){ return day + '-' + period; }
+
+function renderEditableGrid(container, classId, slots){
+  const bySlot = {};
+  slots.forEach(s => bySlot[slotKey(s.day, s.period)] = s);
+  let html = '<table class="grid-table"><thead><tr><th></th>';
+  TT_DAYS.forEach(d => html += `<th>${d}</th>`);
+  html += '</tr></thead><tbody>';
+  for(let p=1; p<=TT_PERIODS; p++){
+    html += `<tr><th>حصة ${p}</th>`;
+    for(let d=0; d<TT_DAYS.length; d++){
+      const s = bySlot[slotKey(d,p)];
+      html += `<td class="grid-cell">
+        <select data-day="${d}" data-period="${p}" onchange="onCellChange(this, ${classId})">
+          <option value="">فارغ</option>
+          ${subjectsCache.map(sub => `<option value="${sub.id}" ${s && s.subject_id===sub.id ? 'selected' : ''}>${sub.name}</option>`).join('')}
+        </select>
+        ${s && s.teacher ? `<span class="teacher-name">${s.teacher}</span>` : ''}
+      </td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+window.onCellChange = async (selectEl, classId)=>{
+  const day = Number(selectEl.dataset.day);
+  const period = Number(selectEl.dataset.period);
+  const subject_id = selectEl.value ? Number(selectEl.value) : null;
+  // try to find a teacher for this class+subject from requirements table for convenience
+  let teacher = null;
+  if(subject_id){
+    const reqs = await api('/api/tt/requirements');
+    const match = reqs.find(r => r.class_id === classId && r.subject_id === subject_id);
+    teacher = match ? match.teacher : null;
+  }
+  await api('/api/tt/slots', { method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ class_id: classId, day, period, subject_id, teacher }) });
+  await loadGrid();
+};
+
+function renderReadonlyGrid(container, slots){
+  const bySlot = {};
+  slots.forEach(s => bySlot[slotKey(s.day, s.period)] = s);
+  let html = '<table class="grid-table"><thead><tr><th></th>';
+  TT_DAYS.forEach(d => html += `<th>${d}</th>`);
+  html += '</tr></thead><tbody>';
+  for(let p=1; p<=TT_PERIODS; p++){
+    html += `<tr><th>حصة ${p}</th>`;
+    for(let d=0; d<TT_DAYS.length; d++){
+      const s = bySlot[slotKey(d,p)];
+      html += `<td>${s ? `${s.subject_name}<br><span class="teacher-name">${s.grade} - ${s.section}</span>` : ''}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+document.getElementById('exportTtBtn').addEventListener('click', ()=>{
+  window.location.href = '/api/tt/export?pin=' + encodeURIComponent(PIN);
+});
+</script>
+</body>
+</html>
