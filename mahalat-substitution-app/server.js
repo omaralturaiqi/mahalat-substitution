@@ -253,7 +253,9 @@ app.get('/api/export', checkPin, async (req, res) => {
 // tt_* tables only; never touches the `entries` substitution-tracker data)
 // ============================================================
 const TT_DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
-const TT_PERIODS = 7;
+// Sunday has 7 periods; the rest of the week has 6.
+const TT_PERIODS_PER_DAY = [7, 6, 6, 6, 6];
+const TT_MAX_PERIODS = Math.max(...TT_PERIODS_PER_DAY);
 
 // -- Subjects --
 app.get('/api/tt/subjects', checkPin, async (req, res) => {
@@ -347,6 +349,9 @@ app.put('/api/tt/slots', checkPin, async (req, res) => {
     if (class_id == null || day == null || period == null) {
       return res.status(400).json({ error: 'بيانات الخانة ناقصة' });
     }
+    if (day < 0 || day >= TT_PERIODS_PER_DAY.length || period < 1 || period > TT_PERIODS_PER_DAY[day]) {
+      return res.status(400).json({ error: 'هذه الخانة غير موجودة في جدول هذا اليوم' });
+    }
     if (!subject_id) {
       await pool.query('DELETE FROM tt_slots WHERE class_id=$1 AND day=$2 AND period=$3', [class_id, day, period]);
       return res.json({ ok: true, cleared: true });
@@ -370,7 +375,7 @@ function shuffle(arr) {
   return a;
 }
 
-function runGenerationAttempt(activities, numDays, numPeriods) {
+function runGenerationAttempt(activities, periodsPerDay) {
   const acts = shuffle(activities);
   const classBusy = new Set();
   const teacherBusy = new Set();
@@ -380,8 +385,8 @@ function runGenerationAttempt(activities, numDays, numPeriods) {
 
   for (const act of acts) {
     const candidates = [];
-    for (let d = 0; d < numDays; d++) {
-      for (let p = 1; p <= numPeriods; p++) candidates.push([d, p]);
+    for (let d = 0; d < periodsPerDay.length; d++) {
+      for (let p = 1; p <= periodsPerDay[d]; p++) candidates.push([d, p]);
     }
     // Prefer days where this subject hasn't already been placed for this class today
     candidates.sort((a, b) => {
@@ -426,7 +431,7 @@ app.post('/api/tt/generate', checkPin, async (req, res) => {
     let best = null;
     const ATTEMPTS = 120;
     for (let i = 0; i < ATTEMPTS; i++) {
-      const result = runGenerationAttempt(activities, TT_DAY_NAMES.length, TT_PERIODS);
+      const result = runGenerationAttempt(activities, TT_PERIODS_PER_DAY);
       if (!best || result.unplaced.length < best.unplaced.length) {
         best = result;
         if (best.unplaced.length === 0) break;
@@ -473,16 +478,21 @@ app.get('/api/tt/export', checkPin, async (req, res) => {
       TT_DAY_NAMES.forEach((d, i) => { ws.getCell(1, i + 2).value = d; ws.getCell(1, i + 2).font = { bold: true }; });
       ws.getColumn(1).width = 12;
       for (let i = 2; i <= TT_DAY_NAMES.length + 1; i++) ws.getColumn(i).width = 20;
-      for (let p = 1; p <= TT_PERIODS; p++) {
+      for (let p = 1; p <= TT_MAX_PERIODS; p++) {
         ws.getCell(p + 1, 1).value = 'حصة ' + p;
         ws.getCell(p + 1, 1).font = { bold: true };
       }
       const bySlot = {};
       slots.filter(s => s.class_id === cls.id).forEach(s => { bySlot[`${s.day}-${s.period}`] = s; });
       for (let d = 0; d < TT_DAY_NAMES.length; d++) {
-        for (let p = 1; p <= TT_PERIODS; p++) {
+        for (let p = 1; p <= TT_PERIODS_PER_DAY[d]; p++) {
           const s = bySlot[`${d}-${p}`];
           if (s) ws.getCell(p + 1, d + 2).value = `${s.subject_name || ''}\n${s.teacher || ''}`;
+        }
+        for (let p = TT_PERIODS_PER_DAY[d] + 1; p <= TT_MAX_PERIODS; p++) {
+          const cell = ws.getCell(p + 1, d + 2);
+          cell.value = '—';
+          cell.font = { color: { argb: 'FFBBBBBB' } };
         }
       }
     }

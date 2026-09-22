@@ -115,7 +115,7 @@
         <div class="field"><label>الفصل</label><select id="reqClass"></select></div>
         <div class="field"><label>المادة</label><select id="reqSubject"></select></div>
         <div class="field"><label>المعلمة</label><select id="reqTeacher"></select></div>
-        <div class="field"><label>حصص/أسبوع</label><input type="number" id="reqPeriods" min="1" max="35" style="min-width:80px;"></div>
+        <div class="field"><label>حصص/أسبوع</label><input type="number" id="reqPeriods" min="1" max="31" style="min-width:80px;"></div>
         <button class="btn" id="addReqBtn">حفظ</button>
       </div>
       <div class="table-wrap"><table id="reqTable"><thead><tr><th>الصف</th><th>الفصل</th><th>المادة</th><th>المعلمة</th><th>حصص/أسبوع</th><th></th></tr></thead><tbody></tbody></table></div>
@@ -153,7 +153,9 @@
 <script>
 let PIN = sessionStorage.getItem('staffPin') || '';
 const TT_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
-const TT_PERIODS = 7;
+// Sunday has 7 periods; the rest of the week has 6.
+const TT_PERIODS_PER_DAY = [7,6,6,6,6];
+const TT_MAX_PERIODS = Math.max(...TT_PERIODS_PER_DAY);
 const TEACHERS = [
   "ابتسام العيدي","أمل الحربي","امل العصلب","أمينة العنزي","بدرية الزغيبي",
   "جميلة الساكت","جيهان البلوي","خزنة الحربي","دلال الحربي","دليل الشمري",
@@ -333,9 +335,13 @@ function renderEditableGrid(container, classId, slots){
   let html = '<table class="grid-table"><thead><tr><th></th>';
   TT_DAYS.forEach(d => html += `<th>${d}</th>`);
   html += '</tr></thead><tbody>';
-  for(let p=1; p<=TT_PERIODS; p++){
+  for(let p=1; p<=TT_MAX_PERIODS; p++){
     html += `<tr><th>حصة ${p}</th>`;
     for(let d=0; d<TT_DAYS.length; d++){
+      if(p > TT_PERIODS_PER_DAY[d]){
+        html += `<td style="background:#F1EFE9; color:var(--muted);">—</td>`;
+        continue;
+      }
       const s = bySlot[slotKey(d,p)];
       html += `<td class="grid-cell">
         <select data-day="${d}" data-period="${p}" onchange="onCellChange(this, ${classId})">
@@ -373,9 +379,13 @@ function renderReadonlyGrid(container, slots){
   let html = '<table class="grid-table"><thead><tr><th></th>';
   TT_DAYS.forEach(d => html += `<th>${d}</th>`);
   html += '</tr></thead><tbody>';
-  for(let p=1; p<=TT_PERIODS; p++){
+  for(let p=1; p<=TT_MAX_PERIODS; p++){
     html += `<tr><th>حصة ${p}</th>`;
     for(let d=0; d<TT_DAYS.length; d++){
+      if(p > TT_PERIODS_PER_DAY[d]){
+        html += `<td style="background:#F1EFE9; color:var(--muted);">—</td>`;
+        continue;
+      }
       const s = bySlot[slotKey(d,p)];
       html += `<td>${s ? `${s.subject_name}<br><span class="teacher-name">${s.grade} - ${s.section}</span>` : ''}</td>`;
     }
